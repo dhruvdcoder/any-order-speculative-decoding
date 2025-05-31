@@ -175,7 +175,7 @@ def create_pos_to_rank(seq_length, curr_masking_rate, fixed_visible_ratio=False,
     visible_indices = shuffle[:num_visible]
     visible_indices = torch.sort(visible_indices).values 
     ################################################
-    # region: DP
+    # region: DP 1
     # The call to sort().values ensures that the selected visible indices through shuffle are in ascending order
     # >>> shuffle = torch.randperm(10)
     # >>> visible_indices=torch.sort(t[:5]).values
@@ -188,7 +188,7 @@ def create_pos_to_rank(seq_length, curr_masking_rate, fixed_visible_ratio=False,
     pos_to_rank = torch.zeros(seq_length, dtype=shuffle.dtype)
     pos_to_rank[visible_indices] = torch.arange(num_visible)
     #################################################
-    # region: DP
+    # region: DP 2
     # pos_to_rank[i] = 0 if i is not in visible_indices, otherwise pos_to_rank[i] = the order in which we decode the token at index i
     # for the example above, pos_to_rank would be:
     # >>> pos_to_rank
@@ -209,7 +209,7 @@ def create_pos_to_rank(seq_length, curr_masking_rate, fixed_visible_ratio=False,
     mask_indices = torch.sort(mask_indices).values
     pos_to_rank[mask_indices] = torch.arange(num_visible, num_visible + num_mask)
     #######################################################
-    # region: DP
+    # region: DP 3
     # Same thing as above, but for the masked indices
     # >>> pos_to_rank
     # tensor([5, 0, 6, 1, 2, 3, 7, 4, 8, 9])
@@ -252,6 +252,24 @@ def calc_parallel_perm_mask(args, batch_size, seq_length, masking_rate, labels):
     mod_pos_to_rank[pos_to_rank >= num_visible] = seq_length # Predict all the invisible tokens simultaneously
     assert not torch.equal(mod_pos_to_rank, pos_to_rank)
     perm_mask = mod_pos_to_rank.unsqueeze(1) <= mod_pos_to_rank.unsqueeze(0) # Ban attention to later items, self, and those that are decoded concurrently
+    #######################################################
+    # region: DP 4
+    # mod_pos_to_rank: [10, 0, 10, 1, 2, 3, 10, 4, 10, 10]
+    # mask:            [1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
+    # perm_mask:
+    #                  [1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
+    #                  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    #                  [1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
+    #                  [1, 0, 1, 1, 1, 1, 1, 1, 1, 1]
+    #                  [1, 0, 1, 0, 1, 1, 1, 1, 1, 1]
+    #                  [1, 0, 1, 0, 0, 1, 1, 1, 1, 1]
+    #                  [1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
+    #                  [1, 0, 1, 0, 0, 0, 1, 1, 1, 1]
+    #                  [1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
+    #                  [1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
+    # perm_mask[q,k]
+    # endregion
+    #######################################################
 
     if args.prompt_attn == FULL_ATTN:
         select_prompt = torch.logical_and(pos_to_rank.unsqueeze(1) < num_visible, pos_to_rank.unsqueeze(0) < num_visible) # Prompt & "already decoded" tokens
