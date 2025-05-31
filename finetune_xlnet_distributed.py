@@ -173,9 +173,28 @@ def create_pos_to_rank(seq_length, curr_masking_rate, fixed_visible_ratio=False,
     num_visible = max(1, num_visible) # Ensure at least one token is visible
     num_visible = min(seq_length - 1, num_visible) # Ensure at least one token is invisible
     visible_indices = shuffle[:num_visible]
-    visible_indices = torch.sort(visible_indices).values
+    visible_indices = torch.sort(visible_indices).values 
+    ################################################
+    # region: DP
+    # The call to sort().values ensures that the selected visible indices through shuffle are in ascending order
+    # >>> shuffle = torch.randperm(10)
+    # >>> visible_indices=torch.sort(t[:5]).values
+    # >>> shuffle
+    # >>> tensor([7, 0, 3, 1, 5, 2, 6, 8, 9, 4])
+    # >>> visible_indices
+    # >>> tensor([0, 1, 3, 5, 7])
+    # endregion
+    #################################################
     pos_to_rank = torch.zeros(seq_length, dtype=shuffle.dtype)
     pos_to_rank[visible_indices] = torch.arange(num_visible)
+    #################################################
+    # region: DP
+    # pos_to_rank[i] = 0 if i is not in visible_indices, otherwise pos_to_rank[i] = the order in which we decode the token at index i
+    # for the example above, pos_to_rank would be:
+    # >>> pos_to_rank
+    # >>> tensor([0, 1, 0, 2, 0, 3, 0, 4, 0, 0])
+    # endregion
+    #################################################
 
     for i in range(num_visible - 1):
         assert visible_indices[i] < visible_indices[i + 1]
@@ -189,6 +208,11 @@ def create_pos_to_rank(seq_length, curr_masking_rate, fixed_visible_ratio=False,
     mask_indices = shuffle[num_visible:]
     mask_indices = torch.sort(mask_indices).values
     pos_to_rank[mask_indices] = torch.arange(num_visible, num_visible + num_mask)
+    #######################################################
+    # region: DP
+    # Same thing as above, but for the masked indices
+    # So now we have a complete permutation that is constrainted to be in ascending order within the visible and masked portions 
+    #######################################################
 
     for i in range(num_mask - 1):
         assert mask_indices[i] < mask_indices[i + 1]
