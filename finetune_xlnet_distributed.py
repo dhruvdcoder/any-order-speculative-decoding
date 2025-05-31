@@ -180,9 +180,9 @@ def create_pos_to_rank(seq_length, curr_masking_rate, fixed_visible_ratio=False,
     # >>> shuffle = torch.randperm(10)
     # >>> visible_indices=torch.sort(t[:5]).values
     # >>> shuffle
-    # >>> tensor([7, 0, 3, 1, 5, 2, 6, 8, 9, 4])
+    # tensor([4, 1, 7, 5, 3, 9, 0, 8, 6, 2])
     # >>> visible_indices
-    # >>> tensor([0, 1, 3, 5, 7])
+    # >>> tensor([1, 3, 4, 5, 7])
     # endregion
     #################################################
     pos_to_rank = torch.zeros(seq_length, dtype=shuffle.dtype)
@@ -192,7 +192,7 @@ def create_pos_to_rank(seq_length, curr_masking_rate, fixed_visible_ratio=False,
     # pos_to_rank[i] = 0 if i is not in visible_indices, otherwise pos_to_rank[i] = the order in which we decode the token at index i
     # for the example above, pos_to_rank would be:
     # >>> pos_to_rank
-    # >>> tensor([0, 1, 0, 2, 0, 3, 0, 4, 0, 0])
+    # >>> tensor([0, 0, 0, 1, 2, 3, 0, 4, 0, 0])
     # endregion
     #################################################
 
@@ -211,6 +211,8 @@ def create_pos_to_rank(seq_length, curr_masking_rate, fixed_visible_ratio=False,
     #######################################################
     # region: DP
     # Same thing as above, but for the masked indices
+    # >>> pos_to_rank
+    # tensor([5, 0, 6, 1, 2, 3, 7, 4, 8, 9])
     # So now we have a complete permutation that is constrainted to be in ascending order within the visible and masked portions 
     #######################################################
 
