@@ -267,7 +267,10 @@ def calc_parallel_perm_mask(args, batch_size, seq_length, masking_rate, labels):
     #                  [1, 0, 1, 0, 0, 0, 1, 1, 1, 1]
     #                  [1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
     #                  [1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
-    # perm_mask[q,k]
+    # perm_mask[q,k] =1 means "don't see" and 0 means "see"
+    # mod_pos_to_rank  is only created to create perm_mask
+    # perm_mask has causal mask for the visible tokens
+    # all masked tokens can always see each other 
     # endregion
     #######################################################
 
@@ -284,6 +287,15 @@ def calc_parallel_perm_mask(args, batch_size, seq_length, masking_rate, labels):
     assert perm_mask.shape == (batch_size, seq_length, seq_length)
 
     order_to_pos = torch.argsort(pos_to_rank, dim=-1)
+    #####################################################
+    # region: DP 5
+    # pos_to_rank means position to order, i.e the array carries the order given the positions as ids
+    # order_to_pos means the opposite, i.e., the array carries the position given the order as ids
+    # pos_to_rank:      [5, 0, 6, 1, 2, 3, 7, 4, 8, 9]
+    # order_to_pos:     [1, 3, 4, 5, 7, 0, 2, 6, 8, 9]
+    # endregion
+    #####################################################
+
     assert order_to_pos.shape == (seq_length,)
     assert pos_to_rank[order_to_pos[0]] == 0
     assert order_to_pos[pos_to_rank[0]] == 0
@@ -293,6 +305,15 @@ def calc_parallel_perm_mask(args, batch_size, seq_length, masking_rate, labels):
 
     target_mapping = torch.zeros(batch_size, num_predict, seq_length)
     target_mapping[:, torch.arange(num_predict), order_to_pos[-num_predict:]] = 1.0 # predict the tokens at the end of the ordering (i.e., last num_predict tokens). We can do this because we use the same ordering.
+    #################################################
+    # region: DP 6
+    # target_mapping[0]: (num_predict, seq_length)
+    #              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    #              [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+    #              [0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+    #              [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+    #              [0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    # endregio
     assert torch.sum(target_mapping) == num_predict * batch_size
     assert torch.sum(target_mapping[0]) == num_predict
     
@@ -301,6 +322,16 @@ def calc_parallel_perm_mask(args, batch_size, seq_length, masking_rate, labels):
     orig_labels = labels.clone()
     labels = labels[:, order_to_pos[-num_predict:]]
     assert labels.shape == (batch_size, num_predict)
+    ##################################################
+    # region: DP 7
+    # orig_labels[0]: (seq_length,)
+    #              [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    # labels[0]: (num_predict,)
+    #              [10, 12, 16, 18, 19]
+    # So together the binary matrix target_mapping and the new labels vector 
+    # contain the information about which positions to predict, in which order (target_mapping) and what are the target tokens (labels)
+    # endregion
+    ##################################################
 
     # Sanity checks
     if torch.rand(1).item() < 1e-4:
